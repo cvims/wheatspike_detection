@@ -1,7 +1,9 @@
 # custom
 dataset_aehren/
-model/
 demonstrator/
+sp_folder/
+images/
+model/
 *png
 
 
