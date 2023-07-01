@@ -74,6 +74,7 @@ def get_model_maskrcnn(num_classes):
     
     return model
 
+
 # trainings procedure
 def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device('cpu')

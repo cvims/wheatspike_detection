@@ -6,6 +6,7 @@ from PIL import Image
 import numpy as np
 import imgaug.augmenters as iaa
 
+
 def get_mean_std(loader):
 
     '''
@@ -41,6 +42,7 @@ def get_mean_std(loader):
     mean, std = fst_moment, torch.sqrt(snd_moment - fst_moment ** 2)        
     return mean,std
 
+
 # extract coco-informations
 def extract_coco_annotations(file_path, idx):
     coco_annotation = COCO(annotation_file=file_path)
@@ -64,6 +66,7 @@ def extract_coco_annotations(file_path, idx):
 
     return anns, category_names, new_mask
 
+
 # albumentation-composition of transformations
 def get_transform_albumentation(train):
     transform = []
@@ -80,6 +83,7 @@ def get_transform_albumentation(train):
                             ], p=1))
     return A.Compose(transform, bbox_params=A.BboxParams(format='coco', label_fields=["class_labels"]))
 
+
 # augments image
 def get_transform_imgaug_img(img):
     seq = iaa.Sequential([
@@ -91,6 +95,7 @@ def get_transform_imgaug_img(img):
     image_aug= seq(image=numpy_img)
     image_aug = Image.fromarray(image_aug)
     return image_aug
+
 
     # transforms image from PIL to torch
 def get_transform_torch_img(img):

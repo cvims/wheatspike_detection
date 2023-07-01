@@ -19,6 +19,7 @@ import os
 import time
 import random
 
+
 # set seed
 def seed_torch(seed=42):
     random.seed(seed)
@@ -30,6 +31,7 @@ def seed_torch(seed=42):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     print("Seed set!")
+
 
 # prediction of model   ->    returns dictionary
 def predict_image_window(model, image_window, score_threshold):
@@ -52,6 +54,7 @@ def predict_image_window(model, image_window, score_threshold):
 
     return prediction[0]
 
+
 # recalculate predicted boxes on 280x280 images onto position of original 521x1721 image    ->  returns predictions dictionary with updated boxes
 def recalculate_bbs(predictions, num_columns):
     for i, pred in enumerate(predictions):
@@ -70,6 +73,7 @@ def recalculate_bbs(predictions, num_columns):
 
     return predictions
 
+
 # calculate center and pixel area of bounding boxes   ->  returns three lists: x, y and pixel area for bounding boxes
 def get_box_center(boxes):
     x_center, y_center, pixel_areas = [], [], []
@@ -84,6 +88,7 @@ def get_box_center(boxes):
         y_center.append(y_mid)
         pixel_areas.append(pixel_area)
     return x_center, y_center, pixel_areas
+
 
 # extract overlapping boxes for intersection removal
 def categorize_boxes(boxes):
@@ -116,6 +121,7 @@ def categorize_boxes(boxes):
     normal_boxes = torch.stack(normal_boxes)
     return overlap_boxes, normal_boxes
 
+
 # returns intersection area of two boxes
 def intersection_area(box1, box2):
     # Calculate the coordinates of the intersection rectangle
@@ -133,6 +139,7 @@ def intersection_area(box1, box2):
     
     return torch.as_tensor(area)
 
+
 # returns area of box
 def area(box):
     x1, y1, x2, y2 = box
@@ -140,6 +147,7 @@ def area(box):
     height = y2 - y1
 
     return width * height
+
 
 # removes boxes based on intersection
 def intersection_filter(both_border_boxes):
@@ -176,6 +184,7 @@ def intersection_filter(both_border_boxes):
     # print("Deleted Boxes:", my_count)
 
     return both_border_boxes
+
 
 # removes overlapping boxes across all boxes and associates sub-image to box    ->     returns dict with boxes, scores and boxes with sub-image association
 def remove_overlapping_boxes(predictions, iou_threshold, intersection=False):
@@ -225,6 +234,7 @@ def remove_overlapping_boxes(predictions, iou_threshold, intersection=False):
 
     return predictions
 
+
 # Plot image prediction for index idx
 def image_plot(results, images_list, idx):
     images, predictions, x_filtered, y_filtered, pixel_areas, sub_image_boxes = results[idx]
@@ -258,8 +268,6 @@ def image_plot(results, images_list, idx):
     implot1 = plt.imshow(torch_img_boxes_c.permute(2,1,0))
 
     plt.show(block=True)
-
-
 
 
 """Hier starten die "wichtigen" Funktionen"""

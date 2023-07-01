@@ -6,14 +6,17 @@ import time
 
 import torch
 import torchvision.models.detection.mask_rcnn
-import detection_utils
-import numpy as np
-import random
+from typing import Tuple, List, Dict
+from torchvision.models.detection.roi_heads import fastrcnn_loss
+from torchvision.models.detection.rpn import concat_box_prediction_layers
 
-from torch.nn import CrossEntropyLoss
+import detection_utils
 
 from coco_eval import CocoEvaluator
 from coco_utils import get_coco_api_from_dataset
+
+from collections import OrderedDict
+
 
 def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
     model.train()
@@ -87,6 +90,7 @@ def _get_iou_types(model):
         iou_types.append("keypoints")
     return iou_types
 
+
 @torch.inference_mode()
 def evaluate(model, data_loader, device):
     n_threads = torch.get_num_threads()
@@ -133,12 +137,7 @@ def evaluate(model, data_loader, device):
     return coco_evaluator, res, model, augmentet_data*2
 
 
-from typing import Tuple, List, Dict, Optional
-import torch
-from torch import Tensor
-from collections import OrderedDict
-from torchvision.models.detection.roi_heads import fastrcnn_loss
-from torchvision.models.detection.rpn import concat_box_prediction_layers
+
 def eval_forward(model, images, targets):
     """
     Args:
