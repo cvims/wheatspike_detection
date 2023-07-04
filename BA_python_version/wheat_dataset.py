@@ -1,6 +1,3 @@
-from detection_utils import collate_fn
-from utils_dataset import get_transform_albumentation
-
 import matplotlib.pyplot as plt
 
 import os
@@ -16,12 +13,13 @@ import torch
 from torchvision.ops import box_convert
 from torchvision.utils import draw_bounding_boxes
 from torchvision.utils import draw_segmentation_masks
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
 import sys
 import albumentations as A
 import imgaug.augmenters as iaa
 from pycocotools.coco import COCO
+
 
 # set seed
 def seed_torch(seed=42):
@@ -35,6 +33,7 @@ def seed_torch(seed=42):
     torch.backends.cudnn.deterministic = True
     print("Seed set!")
 
+
 # Suppresses Output (specific print-statements)
 @contextlib.contextmanager
 def nostdout():
@@ -42,6 +41,7 @@ def nostdout():
     sys.stdout = io.StringIO()
     yield
     sys.stdout = save_stdout
+
 
 # extract coco-informations
 def extract_coco_annotations(file_path, idx):
@@ -66,8 +66,9 @@ def extract_coco_annotations(file_path, idx):
 
     return anns, category_names, new_mask
 
+
 # albumentation-composition of transformations
-def get_transform_albumentation(train, seed=42):
+def get_transform_albumentation(train):
     transform = []
     # rotate_method="ellipse" -> BBs ein wenig zu klein | rotate_method="largest_box" -> BBs ein wenig zu groß / quadratisch
     transform.append(A.Rotate(limit=[39.925, 39.925], always_apply=True, crop_border=True, rotate_method="ellipse"))
@@ -82,6 +83,7 @@ def get_transform_albumentation(train, seed=42):
                             A.Perspective(p=0.4)
                             ], p=1))
         return A.Compose(transform, bbox_params=A.BboxParams(format='coco', label_fields=["class_labels"]))
+
 
 class WheatDataset(Dataset):
     def __init__(self, root, transforms, plot):
@@ -156,14 +158,3 @@ class WheatDataset(Dataset):
 
     def __len__(self):
         return len(self.imgs)
-
-if __name__ == "__main__":
-    seed_torch()
-    root = "/data/departments/schoen/roessle/HSWT_Aehrenzaehlen/"
-    batch_size = 4
-    num_workers = 4
-
-    dataset = WheatDataset(root=root, transforms=get_transform_albumentation(train=True), plot=True)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=collate_fn)
-
-    dataset[0]

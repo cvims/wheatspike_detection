@@ -4,6 +4,9 @@ demonstrator/
 sp_folder/
 images/
 model/
+weights/
+gridmaps/
+heatmaps/
 *png
 
 
