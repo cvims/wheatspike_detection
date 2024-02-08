@@ -1,4 +1,7 @@
 # custom
+cropped_images_with_artifacts/
+cropped_images_without_artifacts/
+transformed_images/
 dataset_aehren/
 demonstrator/
 sp_folder/

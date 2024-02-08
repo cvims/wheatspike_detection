@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
-from PIL import Image
+from matplotlib.patches import Polygon
+from matplotlib.collections import PatchCollection
+from PIL import Image, ImageDraw
 
 import matplotlib
 matplotlib.use('agg')
@@ -20,6 +22,7 @@ import math
 import copy
 import os
 import random
+import csv
 
 from tqdm import tqdm
 
@@ -202,7 +205,9 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
                                 iou_threshold, score_threshold,
                                 plot_single_image_heatmap=False, plot_raw_single_image_boxes=False,
                                 plot_filtered_image_boxes=False,
-                                plot_all_images_heatmap=False, cell_size_heatmap=40):
+                                plot_all_images_heatmap=False, cell_size_heatmap=40,
+                                write_boxes_centers=False,
+                                plot_segmentation_masks=False):
     """
     This function runs the sliding window approach on the model and the data loader.
     The output are the bounding boxes across the original image and
@@ -229,6 +234,14 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
     if plot_all_images_heatmap:
         os.makedirs(all_images_heatmap_dir, exist_ok=True)
 
+    boxes_centers_dir = os.path.join(images_dir, 'box_centers')
+    if plot_all_images_heatmap:
+        os.makedirs(boxes_centers_dir, exist_ok=True)
+
+    segmentation_masks_dir = os.path.join(images_dir, 'segmentation_masks')
+    if plot_segmentation_masks:
+        os.makedirs(segmentation_masks_dir, exist_ok=True)
+
     # For the full batch heatmap
     all_grids = []
 
@@ -236,7 +249,9 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
 
     image_counter = 0
     # Iterate through the data loader
-    for batch in tqdm(data_loader, desc='Running sliding window approach'):
+    for i, batch in enumerate(tqdm(data_loader, desc='Running sliding window approach')):
+        if i == 1:
+            break
         # To same device as model
         batch = batch.to(device)
         # Cut the image into windows
@@ -244,6 +259,7 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
         num_columns = math.floor(batch.shape[3] / step_size_wh)
         num_rows = math.floor(batch.shape[2] / step_size_wh)
 
+        # print(f"Index: {i+1}")
         for image in batch:
             image_counter += 1
             windows = []
@@ -274,7 +290,7 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
             masks = torch.cat([prediction['masks'] for prediction in window_predictions])
 
             # in_built bounding boxes recalculation
-            boxes = recalculate_bbs(window_predictions, (window_size, window_size), num_columns, window_overlapping)
+            boxes = recalculate_bbs(window_predictions, (window_size, window_size), num_columns, window_overlapping)       
 
             if plot_raw_single_image_boxes:
                 single_boxes_image_path = os.path.join(single_image_boxes_dir, f"image_boxes_{image_counter}.png")
@@ -292,10 +308,14 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
                 plot_bounding_boxes_to_image(image, boxes, save_path=filtered_boxes_image_path)
                 # write text file with box count
                 filtered_boxes_text_path = os.path.join(filtered_image_boxes_dir, f"image_boxes_{image_counter}.txt")
-                write_box_count_to_file(boxes, filtered_boxes_text_path)                
+                write_box_count_to_file(boxes, filtered_boxes_text_path)
             
             # Create bounding box centers
             boxes_centers = calculate_bounding_boxes_centers(boxes)
+
+            if write_boxes_centers:
+                boxes_centers_text_path = os.path.join(boxes_centers_dir, f"image_boxes_center_{image_counter}.csv")
+                write_box_centers_to_file(boxes_centers, boxes_centers_text_path)     
 
             if plot_single_image_heatmap:
                 grid = map_bounding_boxes_to_grid(boxes_centers, image.shape[1:], cell_size_heatmap)
@@ -331,7 +351,6 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
         write_grid_to_file(mean_grid, all_images_heatmap_text_path)
 
     return predictions
-
 
 
 def map_bounding_boxes_to_grid(boxes, image_size, grid_cell_size):
@@ -387,8 +406,11 @@ def calculate_bounding_boxes_centers(boxes):
 
 def plot_heatmap_image(grid, save_path, add_numbers=True):
     # Plotting the heatmap
+
+    # start color NOT at 0
     f = plt.figure(figsize=(30,16))
     f.add_subplot(1,1,1)
+    # heatmap = plt.imshow(grid, cmap='YlOrRd', interpolation='nearest')
     heatmap = plt.imshow(grid, cmap='YlOrRd', interpolation='nearest')
 
     if add_numbers:
@@ -404,6 +426,29 @@ def plot_heatmap_image(grid, save_path, add_numbers=True):
 
     f.colorbar(heatmap, shrink=0.4)
     # Save the image
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+
+    # start color at 0
+    f = plt.figure(figsize=(30,16))
+    f.add_subplot(1,1,1)
+    # heatmap = plt.imshow(grid, cmap='YlOrRd', interpolation='nearest')
+    heatmap = plt.imshow(grid, cmap='YlOrRd', interpolation='nearest', clim=(0, grid.max()))
+
+    if add_numbers:
+        # Add the numbers to the heatmap
+        row, column = grid.shape
+        for i in range(row):
+            for j in range(column):
+                # plot plt text rounded to 1 decimal
+                plt.text(j, i, f"{grid[i, j].item():.1f}", ha="center", va="center", color="black", fontsize=15)
+
+        plt.yticks(ticks=torch.arange(row), labels=["y{}".format(i+1) for i in range(row)])
+        plt.xticks(ticks=torch.arange(column), labels=["x{}".format(i+1) for i in range(column)])
+
+    f.colorbar(heatmap, shrink=0.4)
+    # Save the image
+    save_path = save_path[:-4] + "_colorbar0.png"
     plt.savefig(save_path, dpi=300)
     plt.close()
 
@@ -463,6 +508,16 @@ def write_box_count_to_file(boxes, path):
         f.write(f"Number of boxes: {len(boxes)}")
 
 
+def write_box_centers_to_file(boxes, path):
+    with open(path, 'w', newline='') as csvfile:
+        csv_writer = csv.writer(csvfile)
+        header = ['x', 'y']
+        csv_writer.writerow(header)
+        for coord in boxes:
+            csv_writer.writerow(coord.tolist())
+    csvfile.close()
+
+
 def write_grid_to_file(grid, path):
     # Convert torch tensor to NumPy array
     grid_np = grid.numpy()
@@ -476,8 +531,8 @@ def write_grid_to_file(grid, path):
 def get_plot_transforms(center_crop: tuple, resize_hw: tuple):
     return T.Compose([
         T.ToTensor(),
-        T.Lambda(lambda x: F.rotate(x, 85, expand=True)),
-        T.CenterCrop(center_crop),
+        # T.Lambda(lambda x: F.rotate(x, 85, expand=True)),
+        # T.CenterCrop(center_crop),
         T.Resize(resize_hw, antialias=True),
     ])
 
@@ -505,31 +560,29 @@ def create_data_loader(root_path: str, center_crop: tuple, resize_hw: tuple, bat
     return DataLoader(plot_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
 
-
 if __name__ == "__main__":
     seed_torch()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_path = "./weights/mask_rcnn_weights.pt"
-    root_path = "/data/departments/schoen/roessle/HSWT_Aehrenzaehlen/images_full_plots/"
+    model_path = "Bachelorarbeit_Emanuel_J/weights/mask_rcnn_weights.pt"
+    # root_path = "/data/departments/schoen/roessle/HSWT_Aehrenzaehlen/images_full_plots/"
+    root_path = "/home/jacobowsky/Bachelorarbeit_Emanuel_J/BA_python_version/cropped_images_without_artifacts"
     model = torch.load(model_path)
 
     batch_size = 4
-    num_workers = 4
+    num_workers = 1
     shuffle = False
 
     score_threshold = 0.8
     iou_threshold = 0.2
-    # mask_threshold = 0.5
-    # intersection = 0.5
 
     # (H, W)
     center_crop = (1025-325, 2600-350)
 
     # Window size to slide over the image (vertically and horizontally)
     window_size = 280  # window size for sliding window / 280 was the original training size of the mask rcnn model
-    window_overlapping = 40  # overlapping between windows
+    window_overlapping = 13  # overlapping between windows
 
     assert window_size > window_overlapping, "Window size must be larger than overlapping"
 
@@ -538,15 +591,18 @@ if __name__ == "__main__":
 
     image_size = (resize_h, resize_w)
 
+
     plot_dataloader = create_data_loader(
         root_path, center_crop, image_size,
         batch_size=batch_size, shuffle=shuffle, num_workers=num_workers
     )
 
-    predictions, originals = run_sliding_window_approach(
+
+    predictions = run_sliding_window_approach(
         model, plot_dataloader, device, window_size, window_overlapping,
         iou_threshold=iou_threshold, score_threshold=score_threshold,
         plot_single_image_heatmap=True, plot_raw_single_image_boxes=True,
         plot_filtered_image_boxes=True, plot_all_images_heatmap=True,
-        cell_size_heatmap=40,
+        cell_size_heatmap=50, write_boxes_centers=False,
+        plot_segmentation_masks=True
     )
