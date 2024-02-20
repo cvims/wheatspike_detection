@@ -10,6 +10,8 @@ model/
 weights/
 gridmaps/
 heatmaps/
+figures/
+draw_on_image.py
 *png
 
 

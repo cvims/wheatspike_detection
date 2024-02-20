@@ -17,12 +17,16 @@ import torchvision.transforms.functional as F
 from torchvision.utils import draw_bounding_boxes
 import torchvision.ops as ops
 
+from sklearn.metrics import r2_score
+from sklearn.metrics import mean_squared_error
+
 import numpy as np
 import math
 import copy
 import os
 import random
 import csv
+import time
 
 from tqdm import tqdm
 
@@ -207,7 +211,8 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
                                 plot_filtered_image_boxes=False,
                                 plot_all_images_heatmap=False, cell_size_heatmap=40,
                                 write_boxes_centers=False,
-                                plot_segmentation_masks=False):
+                                plot_segmentation_masks=False,
+                                subplot_upsacling=False):
     """
     This function runs the sliding window approach on the model and the data loader.
     The output are the bounding boxes across the original image and
@@ -249,9 +254,11 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
 
     image_counter = 0
     # Iterate through the data loader
+    all_results = []
     for i, batch in enumerate(tqdm(data_loader, desc='Running sliding window approach')):
-        if i == 1:
-            break
+    # if i == 122:
+        # if i == 1:
+        #     break
         # To same device as model
         batch = batch.to(device)
         # Cut the image into windows
@@ -280,14 +287,14 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
             for window in windows:
                 predictions = model(window)
                 # Move predictions to cpu before appending to list
-                predictions = [{k: v.to('cpu') for k, v in t.items()} for t in predictions]
+                predictions = [{k: v.to('cpu') for k, v in t.items() if k != 'masks'} for t in predictions]
                 window_predictions.extend(predictions)
 
             # stack window predictions
             boxes = torch.cat([prediction['boxes'] for prediction in window_predictions])
             scores = torch.cat([prediction['scores'] for prediction in window_predictions])
-            labels = torch.cat([prediction['labels'] for prediction in window_predictions])
-            masks = torch.cat([prediction['masks'] for prediction in window_predictions])
+            # labels = torch.cat([prediction['labels'] for prediction in window_predictions])
+            # masks = torch.cat([prediction['masks'] for prediction in window_predictions])
 
             # in_built bounding boxes recalculation
             boxes = recalculate_bbs(window_predictions, (window_size, window_size), num_columns, window_overlapping)       
@@ -299,7 +306,7 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
                 single_boxes_text_path = os.path.join(single_image_boxes_dir, f"image_boxes_{image_counter}.txt")
                 write_box_count_to_file(boxes, single_boxes_text_path)
             
-            # Filter the boxes (IoU)
+            # Filter the boxes for complete parcel (IoU)
             boxes, scores, removed_boxes, removed_scores = apply_nms(boxes, scores, iou_threshold)
             boxes, scores, removed_boxes, removed_scores = apply_score_threshold(boxes, scores, score_threshold)
 
@@ -336,12 +343,22 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
 
                 # Add to all heatmaps
                 all_grids.append(grid)
-    
+
+            if subplot_upsacling:
+                sub_imageboxes_list = calculate_subplot_upsacling(image, boxes, windows, window_predictions, 
+                                                                idx=0, details=False, save_plot=False)
+            
+            all_results.append([windows, window_predictions, boxes, sub_imageboxes_list])
+
     # plot mean heatmap
     if plot_all_images_heatmap:
         # Calculate the mean heatmap
         all_grids = torch.stack(all_grids)
         mean_grid = torch.mean(all_grids, axis=0)
+
+        # Average Count
+        w, h = grid.shape
+        average_heatmap_counts = torch.sum(mean_grid) / (w*h)
 
         all_images_heatmap_path = os.path.join(all_images_heatmap_dir, f"all_images_heatmap.png")
         plot_heatmap_image(mean_grid, all_images_heatmap_path, add_numbers=True)
@@ -350,7 +367,233 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
         all_images_heatmap_text_path = os.path.join(all_images_heatmap_dir, f"all_images_heatmap.txt")
         write_grid_to_file(mean_grid, all_images_heatmap_text_path)
 
+    if subplot_upsacling:
+        full_subplot_estimation(all_results, subplot_idx=2, plot_all=True)
+
+    print(f"Average Heatmap Count: {average_heatmap_counts}\n")
+
     return predictions
+
+
+# estimate single full plot using a single 280x280 plot
+def calculate_subplot_upsacling(image, boxes, windows, window_predictions, idx, details=False, save_plot=False):
+    
+    total_wheatheads = len(boxes)
+    # print(f"Total Wheat Heads: {total_wheatheads}\n")
+
+    estimations = []
+    row = []
+    array = []
+    sub_image_boxes_list = []
+
+    _, w, h = image.shape
+    full_plot_size = w * h
+    small_plot_size = 280*280
+    inverse_proportion = full_plot_size / small_plot_size
+
+    idx = 0
+    for i, batch in enumerate(windows):
+        for j, window in enumerate(batch):
+            
+            print("batch nms:", len(batch))
+            print(idx+j)
+
+            # Filter single sub-images
+            sub_image_boxes, sub_image_scores, _, _ = apply_nms(window_predictions[idx+j]["boxes"], window_predictions[idx+j]["scores"], iou_threshold)
+            sub_image_boxes, _, _, _ = apply_score_threshold(sub_image_boxes, sub_image_scores, score_threshold)
+            sub_image_boxes_list.append(sub_image_boxes)
+
+            # Count-based estimation
+            count_small_plot = len(sub_image_boxes)
+            count_estimation = math.floor(inverse_proportion * count_small_plot)
+
+            # print(f"Sub-Image Wheat Heads: {count_small_plot}")
+
+            if details:
+                print(f"Sub-image {idx+j}")
+                print(f"Part Wheat Heads: {count_small_plot}")
+                print(f"Count-based Estimated Wheat Heads: {count_estimation}")
+                print(f"Deviation (Count): {count_estimation-total_wheatheads}")
+                print(f"Deviation (Percent): {np.round(((count_estimation/total_wheatheads)-1)*100, 2)}%\n")
+
+            estimations.append(count_estimation)
+            row.append(count_estimation)
+
+            if (idx+1) % 8 == 0:
+                array.append(row)
+                row = []
+        idx += len(batch)
+
+    # print(f"Min estimation: {min(estimations)} | Index: {estimations.index(min(estimations))}")
+    # print(f"Max estimation: {max(estimations)} | Index: {estimations.index(max(estimations))}\n")
+
+    # print(f"{torch.as_tensor(array)}\n")
+
+    if save_plot:
+        # Sub-Image generation
+        image_pil = F.to_pil_image(windows[idx])
+        image_cv = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
+        for box in sub_image_boxes_list[idx]:
+            box = box.int()
+            x1, y1, x2, y2 = box.tolist()
+            image_cv = cv2.rectangle(image_cv, (x1, y1), (x2, y2), color=(0,0,255), thickness=1)
+        image_pil_result = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB))
+        # image_pil_result.save("/home/jacobowsky/Bachelorarbeit_Emanuel_J/BA_python_version/example_subplot_upscale_subimage.png")
+
+        # Plot-Image generation
+        image_pil = F.to_pil_image(image)
+        image_cv = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
+        for box in boxes:
+            box = box.int()
+            x1, y1, x2, y2 = box.tolist()
+            image_cv = cv2.rectangle(image_cv, (x1, y1), (x2, y2), color=(0,0,255), thickness=1)
+        image_pil_result = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB))
+        # image_pil_result.save("/home/jacobowsky/Bachelorarbeit_Emanuel_J/BA_python_version/example_subplot_upscale_plot.png")
+
+    return sub_image_boxes_list
+
+
+def scatter_plot(sub_plot_estimation, full_estimation, subplot_idx):
+
+    save_folder = r"/home/jacobowsky/Bachelorarbeit_Emanuel_J/BA_python_version/figures/scatterplots"
+
+    r2_list, rmse_list = [], []
+    x = np.arange(len(full_estimation))
+    all_subplots = True
+    row_counter = 0
+
+    row = ["A", "B"]
+
+    if all_subplots:
+        for i, single_estimation in enumerate(sub_plot_estimation):
+            single_full_estimate = full_estimation
+            r2 = r2_score(single_full_estimate, single_estimation)
+            rmse = np.sqrt(mean_squared_error(single_full_estimate, single_estimation))
+            r2_index = i % 8
+
+            # get correct row and col
+            if i == 8:
+                row_counter += 1
+
+            f = plt.figure(figsize=(16, 16))
+            plt.title(f'Sub-Image: {r2_index+1}{row[row_counter]} - R²: {r2:.2f} - RMSE: {rmse:.2f}', fontsize=26)
+            plt.scatter(single_full_estimate, single_estimation, color='red', label=f'Data Points: {len(single_estimation)}', s=15)
+            plt.plot([min(single_full_estimate), max(single_full_estimate)], [min(single_full_estimate), max(single_full_estimate)], linestyle='--', linewidth=2, color='grey', label=f'R²: {r2:.2f}')
+            plt.xlabel('Sliding Window Prediction', fontsize=24)
+            plt.ylabel('Subplot Upscaling', fontsize=24)
+            plt.xticks(fontsize=16)
+            plt.yticks(fontsize=16)
+            plt.grid(True)
+            plt.legend(fontsize=20)
+
+            save_path = os.path.join(save_folder, f'scatterplots_{i+1}.png')
+            plt.savefig(save_path)
+            plt.close(f)
+
+    for sb_est in sub_plot_estimation:
+        r2_list.append(r2_score(full_estimation, sb_est))
+        rmse_list.append(np.sqrt(mean_squared_error(full_estimation, sb_est)))
+    r2_best = max(r2_list)
+    r2_worst = min(r2_list)
+    r2_best_index = r2_list.index(r2_best)
+    r2_worst_index = r2_list.index(r2_worst)
+    rmse_best = min(rmse_list)
+    rmse_best_index = rmse_list.index(rmse_best)
+    rmse_worst = max(rmse_list)
+    rmse_worst_index = rmse_list.index(rmse_worst)
+    sub_plot_estimation_best = sub_plot_estimation[r2_best_index]
+    sub_plot_estimation_worst = sub_plot_estimation[r2_worst_index]
+
+    print(f"Min R²: {min(r2_list)} - Index: {r2_list.index(min(r2_list))}")
+    print(f"Max R²: {max(r2_list)} - Index: {r2_list.index(max(r2_list))}")
+    print(f"Min RMSE: {min(rmse_list)} - Index: {rmse_list.index(min(rmse_list))}")
+    print(f"Max RMSE: {max(rmse_list)} - Index: {rmse_list.index(max(rmse_list))}\n")
+    print(f"All R² Values: {np.round(r2_list, 2)}\n")
+    print(f"All RMSE Values: {np.round(rmse_list, 2)}\n")
+
+    f = plt.figure(figsize=(24,10))
+
+    f.add_subplot(1,2,1)
+    plt.title(f'Best Sub-Image: {r2_best_index+1} - R²: {r2_best:.2f} - RMSE: {rmse_best:.2f}')
+    plt.scatter(full_estimation, sub_plot_estimation_best, color='red', label=f'Data Points: {len(sub_plot_estimation)}', s=15)
+    plt.plot([min(full_estimation), max(full_estimation)], [min(full_estimation), max(full_estimation)], linestyle='--', linewidth=2, color='grey', label=f'R²: {r2_best:.2f}')
+    plt.xlabel('Sliding Window Prediction')
+    plt.ylabel('Subplot Upscaling')
+    plt.grid(True)
+    plt.legend()
+
+    f.add_subplot(1,2,2)
+    plt.title(f'Worst Sub-Image: {r2_worst_index+1} - R²: {r2_worst:.2f} - RMSE: {rmse_worst:.2f}')
+    plt.scatter(full_estimation, sub_plot_estimation_worst, color='red', label=f'Data Points: {len(sub_plot_estimation)}', s=15)
+    plt.plot([min(full_estimation), max(full_estimation)], [min(full_estimation), max(full_estimation)], linestyle='--', linewidth=2, color='grey', label=f'R²: {r2_worst:.2f}')
+    plt.xlabel('Sliding Window Prediction')
+    plt.ylabel('Subplot Upscaling')
+    plt.grid(True)
+    plt.legend()
+
+    save_path = os.path.join(save_folder, f'scatterplots_combined.png')
+    plt.savefig(save_path)
+    plt.close(f)
+
+
+def full_subplot_estimation(all_results, subplot_idx, plot_all=False):
+
+    average_prediction = np.zeros(shape=(2,8))
+    average_total_wheatheads = 0
+    full_plot_size = 547 * 2149
+    small_plot_size = 280*280
+    inverse_proportion = full_plot_size / small_plot_size
+    total_wheatheads_list = []
+    subplot_count_dict = {}
+
+    # get counts for each sub-plot and add them across all plots to get the average upscaling values
+    for i, full_images in enumerate(all_results):
+        tmp = np.zeros(shape=(16))
+        windows = full_images[0]
+        total_wheatheads = len(full_images[2])
+        total_wheatheads_list.append(total_wheatheads)
+        idx = 0
+        for j, batch in enumerate(windows):
+            for k, window in enumerate(batch):
+                print("batch upscale:", len(batch))
+                print(idx+j)
+                boxes = full_images[3][idx+k]
+                count_small_plot = len(boxes)
+                count_estimation = math.floor(inverse_proportion * count_small_plot)
+                if idx+k not in subplot_count_dict:
+                    subplot_count_dict[idx+k] = [count_estimation]
+                else:
+                    subplot_count_dict[idx+k].append(count_estimation)
+                tmp[idx+k] += count_estimation
+            idx += len(batch)
+        tmp = tmp.reshape((2,8))
+        average_prediction += tmp
+        average_total_wheatheads += total_wheatheads
+            
+    average_prediction = average_prediction / len(all_results)
+    average_total_wheatheads = average_total_wheatheads / len(all_results)
+
+    difference_prediction_total = average_prediction - average_total_wheatheads
+
+    deviation_matrix = ((average_prediction/average_total_wheatheads)-1)*100
+
+    print(f"Average Total Wheatheads (Sliding Window): \n {int(average_total_wheatheads)}\n")
+    print(f"Average Prediction: \n {average_prediction}\n")
+    print(f"Difference Prediction: \n {difference_prediction_total}\n")
+    print(f"Average Difference Prediction: {np.round(np.sum(difference_prediction_total)/21,2)}\n")
+    print(f"Deviation (Percent): \n {np.round(deviation_matrix, 2)}\n")
+    print(f"Average Deviation: {np.round(np.sum(deviation_matrix) / 21, 2)}%\n")
+
+    # get items of dict as list for subplot creation
+    subplot_values = []
+    for key, value in subplot_count_dict.items():
+        subplot_values.append(value)
+
+    # by index
+    if plot_all:
+        scatter_plot(subplot_values, total_wheatheads_list, subplot_idx)
+
+    return average_prediction, average_total_wheatheads
 
 
 def map_bounding_boxes_to_grid(boxes, image_size, grid_cell_size):
@@ -570,7 +813,7 @@ if __name__ == "__main__":
     root_path = "/home/jacobowsky/Bachelorarbeit_Emanuel_J/BA_python_version/cropped_images_without_artifacts"
     model = torch.load(model_path)
 
-    batch_size = 4
+    batch_size = 2
     num_workers = 1
     shuffle = False
 
@@ -597,12 +840,14 @@ if __name__ == "__main__":
         batch_size=batch_size, shuffle=shuffle, num_workers=num_workers
     )
 
-
+    start = time.time()
     predictions = run_sliding_window_approach(
         model, plot_dataloader, device, window_size, window_overlapping,
         iou_threshold=iou_threshold, score_threshold=score_threshold,
         plot_single_image_heatmap=True, plot_raw_single_image_boxes=True,
         plot_filtered_image_boxes=True, plot_all_images_heatmap=True,
         cell_size_heatmap=50, write_boxes_centers=False,
-        plot_segmentation_masks=True
+        plot_segmentation_masks=True, subplot_upsacling=True
     )
+    end = time.time()
+    print(f"Time elapsed: {np.round(end - start, 3)} seconds")
