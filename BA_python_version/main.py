@@ -45,7 +45,7 @@ def seed_torch(seed=42):
 
 
 # recalculate predicted boxes on 280x280 images onto position of original 521x1721 image    ->  returns predictions dictionary with updated boxes
-def recalculate_bbs(window_predictions, image_size, num_columns: int, overlapping: int):
+def recalculate_bbs(window_predictions, image_size, num_columns: int, step_size_vertical: int, window_overlapping: int):
     """
     This is an in-built operation on the window predictions. It is used to update the bounding boxes.
     """
@@ -59,10 +59,36 @@ def recalculate_bbs(window_predictions, image_size, num_columns: int, overlappin
         for j in range(window['boxes'].shape[0]):
             x1, y1, x2, y2 = window['boxes'][j]
             # update box to original image size
-            x1 = x1 + (i % num_columns) * image_w - ((i % num_columns) * overlapping)
-            y1 = y1 + (i // num_columns) * image_h - ((i // num_columns) * overlapping)
-            x2 = x2 + (i % num_columns) * image_w - ((i % num_columns) * overlapping)
-            y2 = y2 + (i // num_columns) * image_h - ((i // num_columns) * overlapping)
+            x1 = x1 + (i % num_columns) * image_w - ((i % num_columns) * window_overlapping)
+            y1 = y1 + (i // num_columns) * (image_h - step_size_vertical) - ((i // num_columns) * window_overlapping)
+            x2 = x2 + (i % num_columns) * image_w - ((i % num_columns) * window_overlapping)
+            y2 = y2 + (i // num_columns) * (image_h - step_size_vertical) - ((i // num_columns) * window_overlapping)
+
+            # update box in window
+            boxes.append(torch.stack([x1, y1, x2, y2]))
+    
+    return torch.stack(boxes)
+
+
+# recalculate predicted boxes on 280x280 images onto position of original 521x1721 image    ->  returns predictions dictionary with updated boxes
+def recalculate_bbs_2rows(window_predictions, image_size, num_columns: int, step_size_vertical: int, window_overlapping: int):
+    """
+    This is an in-built operation on the window predictions. It is used to update the bounding boxes.
+    """
+
+    # get image size
+    image_h, image_w = image_size
+
+    boxes = []
+
+    for i, window in enumerate(window_predictions):
+        for j in range(window['boxes'].shape[0]):
+            x1, y1, x2, y2 = window['boxes'][j]
+            # update box to original image size
+            x1 = x1 + (i % num_columns) * image_w - ((i % num_columns) * window_overlapping)
+            y1 = y1 + (i // num_columns) * image_h - ((i // num_columns) * window_overlapping)
+            x2 = x2 + (i % num_columns) * image_w - ((i % num_columns) * window_overlapping)
+            y2 = y2 + (i // num_columns) * image_h - ((i // num_columns) * window_overlapping)
 
             # update box in window
             boxes.append(torch.stack([x1, y1, x2, y2]))
@@ -250,21 +276,24 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
     # For the full batch heatmap
     all_grids = []
 
-    step_size_wh = window_size - window_overlapping
+    # Stepsizes
+    step_size_horizontal = window_size - window_overlapping
+    step_size_vertical = math.floor((window_size - window_overlapping)/2)
 
     image_counter = 0
     # Iterate through the data loader
     all_results = []
     for i, batch in enumerate(tqdm(data_loader, desc='Running sliding window approach')):
     # if i == 122:
-        # if i == 1:
+        # if i == 10:
         #     break
         # To same device as model
         batch = batch.to(device)
         # Cut the image into windows
         batch_size = batch.shape[0]
-        num_columns = math.floor(batch.shape[3] / step_size_wh)
-        num_rows = math.floor(batch.shape[2] / step_size_wh)
+        num_columns = math.floor(batch.shape[3] / step_size_horizontal)
+        # num_rows = math.floor(batch.shape[2] / step_size_vertical)
+        num_rows = 3
 
         # print(f"Index: {i+1}")
         for image in batch:
@@ -272,8 +301,8 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
             windows = []
             for x in range(num_rows):
                 for y in range(num_columns):
-                    current_height = x * step_size_wh
-                    current_width = y * step_size_wh
+                    current_height = x * step_size_vertical
+                    current_width = y * step_size_horizontal
                     window = image[:, current_height:current_height + window_size, current_width:current_width + window_size]
                     windows.append(window)
 
@@ -296,8 +325,16 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
             # labels = torch.cat([prediction['labels'] for prediction in window_predictions])
             # masks = torch.cat([prediction['masks'] for prediction in window_predictions])
 
+            boxes_2rows = torch.cat([prediction['boxes'] for prediction in window_predictions[:8]] +
+                  [prediction['boxes'] for prediction in window_predictions[16:]])
+            scores_2rows = torch.cat([prediction['scores'] for prediction in window_predictions[:8]] +
+                   [prediction['scores'] for prediction in window_predictions[16:]])
+
+            window_predictions_2rows = window_predictions[:8] + window_predictions[16:]
+
             # in_built bounding boxes recalculation
-            boxes = recalculate_bbs(window_predictions, (window_size, window_size), num_columns, window_overlapping)       
+            boxes = recalculate_bbs(window_predictions, (window_size, window_size), num_columns, step_size_vertical, window_overlapping)       
+            boxes_2rows = recalculate_bbs_2rows(window_predictions_2rows, (window_size, window_size), num_columns, step_size_horizontal, window_overlapping)
 
             if plot_raw_single_image_boxes:
                 single_boxes_image_path = os.path.join(single_image_boxes_dir, f"image_boxes_{image_counter}.png")
@@ -309,6 +346,9 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
             # Filter the boxes for complete parcel (IoU)
             boxes, scores, removed_boxes, removed_scores = apply_nms(boxes, scores, iou_threshold)
             boxes, scores, removed_boxes, removed_scores = apply_score_threshold(boxes, scores, score_threshold)
+
+            boxes_2rows, scores_2rows, removed_boxes, removed_scores = apply_nms(boxes_2rows, scores_2rows, iou_threshold)
+            boxes_2rows, scores_2rows, removed_boxes, removed_scores = apply_score_threshold(boxes_2rows, scores_2rows, score_threshold)
 
             if plot_filtered_image_boxes:
                 filtered_boxes_image_path = os.path.join(filtered_image_boxes_dir, f"image_boxes_{image_counter}.png")
@@ -348,7 +388,7 @@ def run_sliding_window_approach(model, data_loader, device, window_size, window_
                 sub_imageboxes_list = calculate_subplot_upsacling(image, boxes, windows, window_predictions, 
                                                                 idx=0, details=False, save_plot=False)
             
-            all_results.append([windows, window_predictions, boxes, sub_imageboxes_list])
+            all_results.append([windows, window_predictions, boxes, sub_imageboxes_list, boxes_2rows])
 
     # plot mean heatmap
     if plot_all_images_heatmap:
@@ -394,9 +434,6 @@ def calculate_subplot_upsacling(image, boxes, windows, window_predictions, idx, 
     idx = 0
     for i, batch in enumerate(windows):
         for j, window in enumerate(batch):
-            
-            print("batch nms:", len(batch))
-            print(idx+j)
 
             # Filter single sub-images
             sub_image_boxes, sub_image_scores, _, _ = apply_nms(window_predictions[idx+j]["boxes"], window_predictions[idx+j]["scores"], iou_threshold)
@@ -462,7 +499,7 @@ def scatter_plot(sub_plot_estimation, full_estimation, subplot_idx):
     all_subplots = True
     row_counter = 0
 
-    row = ["A", "B"]
+    row = ["A", "B", "C"]
 
     if all_subplots:
         for i, single_estimation in enumerate(sub_plot_estimation):
@@ -473,6 +510,8 @@ def scatter_plot(sub_plot_estimation, full_estimation, subplot_idx):
 
             # get correct row and col
             if i == 8:
+                row_counter += 1
+            if i == 16:
                 row_counter += 1
 
             f = plt.figure(figsize=(16, 16))
@@ -538,9 +577,9 @@ def scatter_plot(sub_plot_estimation, full_estimation, subplot_idx):
 
 def full_subplot_estimation(all_results, subplot_idx, plot_all=False):
 
-    average_prediction = np.zeros(shape=(2,8))
+    average_prediction = np.zeros(shape=(3,8))
     average_total_wheatheads = 0
-    full_plot_size = 547 * 2149
+    full_plot_size = 547*2149
     small_plot_size = 280*280
     inverse_proportion = full_plot_size / small_plot_size
     total_wheatheads_list = []
@@ -548,9 +587,10 @@ def full_subplot_estimation(all_results, subplot_idx, plot_all=False):
 
     # get counts for each sub-plot and add them across all plots to get the average upscaling values
     for i, full_images in enumerate(all_results):
-        tmp = np.zeros(shape=(16))
+        tmp = np.zeros(shape=(24))
         windows = full_images[0]
-        total_wheatheads = len(full_images[2])
+        # total_wheatheads = len(full_images[2]) # 3rows
+        total_wheatheads = len(full_images[4]) # 2 rows
         total_wheatheads_list.append(total_wheatheads)
         idx = 0
         for j, batch in enumerate(windows):
@@ -566,7 +606,7 @@ def full_subplot_estimation(all_results, subplot_idx, plot_all=False):
                     subplot_count_dict[idx+k].append(count_estimation)
                 tmp[idx+k] += count_estimation
             idx += len(batch)
-        tmp = tmp.reshape((2,8))
+        tmp = tmp.reshape((3,8))
         average_prediction += tmp
         average_total_wheatheads += total_wheatheads
             
@@ -577,12 +617,21 @@ def full_subplot_estimation(all_results, subplot_idx, plot_all=False):
 
     deviation_matrix = ((average_prediction/average_total_wheatheads)-1)*100
 
+    mean = np.mean(total_wheatheads_list)
+    min_val = np.min(total_wheatheads_list)
+    max_val = np.max(total_wheatheads_list)
+    std_dev = np.std(total_wheatheads_list)
+
     print(f"Average Total Wheatheads (Sliding Window): \n {int(average_total_wheatheads)}\n")
     print(f"Average Prediction: \n {average_prediction}\n")
     print(f"Difference Prediction: \n {difference_prediction_total}\n")
-    print(f"Average Difference Prediction: {np.round(np.sum(difference_prediction_total)/21,2)}\n")
+    print(f"Average Difference Prediction: {np.round(np.sum(difference_prediction_total)/24,2)}\n")
     print(f"Deviation (Percent): \n {np.round(deviation_matrix, 2)}\n")
-    print(f"Average Deviation: {np.round(np.sum(deviation_matrix) / 21, 2)}%\n")
+    print(f"Average Deviation: {np.round(np.sum(deviation_matrix) / 24, 2)}%\n")
+    print(f"Mean:", mean)
+    print(f"Min:", min_val)
+    print(f"Max:", max_val)
+    print(f"Standard Deviation:", std_dev)
 
     # get items of dict as list for subplot creation
     subplot_values = []
@@ -805,6 +854,8 @@ def create_data_loader(root_path: str, center_crop: tuple, resize_hw: tuple, bat
 
 if __name__ == "__main__":
     seed_torch()
+
+    print(torch.__version__)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

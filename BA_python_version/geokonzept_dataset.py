@@ -71,8 +71,8 @@ def extract_coco_annotations(file_path, idx):
 def get_transform_albumentation(train):
     transform = []
     # rotate_method="ellipse" -> BBs ein wenig zu klein | rotate_method="largest_box" -> BBs ein wenig zu groß / quadratisch
-    transform.append(A.Rotate(limit=[39.925, 39.925], always_apply=True, crop_border=True, rotate_method="ellipse"))
-    transform.append(A.RGBShift(r_shift_limit=(10,10), g_shift_limit=(10,10), b_shift_limit=(2,2), always_apply=True))
+    # transform.append(A.Rotate(limit=[0, 0], always_apply=True, crop_border=True, rotate_method="ellipse"))
+    # transform.append(A.RGBShift(r_shift_limit=(10,10), g_shift_limit=(10,10), b_shift_limit=(2,2), always_apply=True))
     if train:
         transform.append(A.Affine(rotate=[-15, 15], p=0.5))
         transform.append(A.RandomCrop(height=192, width=192, p=0.5))
@@ -83,10 +83,10 @@ def get_transform_albumentation(train):
                             A.PixelDropout(p=0.6),
                             A.Perspective(p=0.4)
                             ], p=1))
-        return A.Compose(transform, bbox_params=A.BboxParams(format='coco', label_fields=["class_labels"]))
+    return A.Compose(transform, bbox_params=A.BboxParams(format='coco', label_fields=["class_labels"]))
 
 
-class WheatDataset(Dataset):
+class GeokonzeptDataset(Dataset):
     def __init__(self, root, transforms, plot):
         self.root = root
         self.transforms = transforms
@@ -114,7 +114,7 @@ class WheatDataset(Dataset):
         boxes = torch.as_tensor(boxes, dtype=torch.float32).numpy()
         mask = mask.to(dtype=torch.uint8).permute(1,2,0).numpy()
         labels = torch.ones((len(boxes),), dtype=torch.int64)
-        img_id = int(re.findall(r'\d+', img_path)[-2])
+        img_id = int(re.findall(r'\d+', img_path)[-1])
         image_id = torch.tensor([img_id])
         anno_idx = torch.tensor([idx+1])
         area = torch.as_tensor(area, dtype=torch.float32)
@@ -151,16 +151,18 @@ class WheatDataset(Dataset):
         # plot img + boxes + masks
         if self.plot:
             bboxes = draw_bounding_boxes((img*255).to(torch.uint8), target["boxes"], colors=(255,0,0))
-            masks = draw_segmentation_masks(bboxes, (target["masks"].sum(dim=0)) > 0, colors=(0,0,255), alpha=0.5)
+            masks = draw_segmentation_masks(bboxes, (target["masks"].sum(dim=0)) > 0, colors=(0,0,255), alpha=0.25).permute(1,2,0)
             fig, ax = plt.subplots(figsize=(14, 11))
-            plt.imshow(masks.permute(1,2,0))
+            # plt.savefig(masks.permute(1,2,0))
+            plt.imshow(masks)
+            plt.savefig(os.path.join(self.root, "figures/figure.png"))
 
         return img, target
 
     def __len__(self):
         return len(self.imgs)
 
-# if __name__ == "__main__":
-#     root = "/home/jacobowsky/Bachelorarbeit_Emanuel_J/dataset_aehren"
-#     dataset = WheatDataset(root, get_transform_albumentation(train=True), plot=False)
-#     print(dataset[0][0])
+if __name__ == "__main__":
+    root = "/home/jacobowsky/Bachelorarbeit_Emanuel_J/geokonzept_annotations"
+    dataset = GeokonzeptDataset(root, get_transform_albumentation(train=True), plot=True)
+    print(dataset[0])

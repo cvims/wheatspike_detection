@@ -43,6 +43,7 @@ def seed_torch(seed=42):
     torch.backends.cudnn.deterministic = True
     print("Seed set!")
 
+
 # sets display for pandas dataframe
 def set_pandas_display_options():
     display = pd.options.display
@@ -50,6 +51,7 @@ def set_pandas_display_options():
     display.max_rows = 10
     display.max_colwidth = 199
     display.width = 1000
+
 
 # creates mask-rcnn
 def get_model_maskrcnn(num_classes):
@@ -115,7 +117,7 @@ def main():
                                                    step_size=3,
                                                    gamma=0.1)
 
-    num_epochs = 1
+    num_epochs = 5
 
     augmentet_data_counter = 0
     logger_full, logger_sum, val_losses = [], [], []
@@ -135,13 +137,14 @@ def main():
         val_losses.append(evaluate_loss(model, data_loader_validation, device))
 
         if epoch % 5 == 0:
-            torch.save(model, model_path+"/model_" + str(epoch) + "_epochs_" + str(date.today()) + "_v2.pt")
+            torch.save(model, model_path+"/model_" + str(epoch) + "_epochs_" + str(date.today()) + "hswt_rgbshift.pt")
 
     # Save trained model parameter and whole model
-    torch.save(model, model_path+"/model_" + str(num_epochs) + "_epochs_" + str(date.today()) + "_v2.pt")
+    torch.save(model, model_path+"/model_" + str(num_epochs) + "_epochs_" + str(date.today()) + "hswt_rgbshift.pt")
 
     print("That's it!")
     return dataset_train, dataset_validation, dataset_test, dataset_testing, logger_full, logger_sum, val_losses, augmentet_data_counter
+
 
 def plot_losses_over_epochs(logger_full, logger_sum):
     loss_classifier, loss_box_reg, loss_mask, loss_objectness, loss_rpn_box_reg =  [], [], [], [], []
@@ -191,6 +194,7 @@ def plot_losses_over_epochs(logger_full, logger_sum):
     plt.grid(True)
     plt.legend(loc="upper right")
 
+
 # get annotations for comparison
 def get_annotations(annotations_path, key_anno):
     with nostdout():
@@ -204,6 +208,7 @@ def get_annotations(annotations_path, key_anno):
     anno_wheat_heads = len(boxes)
     return anno_wheat_heads, boxes, mask
 
+
 # predict with selected model
 def prediction(model, img):
     img = img.cuda() / 255
@@ -215,6 +220,7 @@ def prediction(model, img):
     prediction[0]["masks"] = torch.Tensor(prediction[0]["masks"].cpu().detach().numpy())
 
     return prediction[0]
+
 
 # plot original and test set image
 def plot_predicted_validation(target, img, score_threshold, mask_threshold, key_image, key_anno, anno_wheat_heads):
@@ -250,6 +256,7 @@ def plot_predicted_validation(target, img, score_threshold, mask_threshold, key_
     print("Detected wheat heads after threshold:", len(n_detections))
     print("Annotated wheat heads:", anno_wheat_heads)
     print("Deviation: " + str(np.round((len(n_detections)/anno_wheat_heads)-1, 5)) + "%")
+
 
 # plot original and test set image
 def plot_predicted_testimg(target, img, score_threshold, mask_threshold, key_image, key_anno, anno_wheat_heads):
@@ -287,6 +294,7 @@ def plot_predicted_testimg(target, img, score_threshold, mask_threshold, key_ima
     plt.imshow(images_overlapped)
     plt.show(block=True)
 
+
 # creates dictionary of test results
 def dict_for_testresults():
     image_ids, count_annotations, count_predictions, instance_difference, percentual_difference = [], [], [], [], []
@@ -321,6 +329,7 @@ def dict_for_testresults():
 
     return results
 
+
 # create dataframes for values and stats
 def create_dataframes(results):
     total, average, deviation = ["Total:"], ["Average:"], ["Standard deviation:"]
@@ -354,16 +363,20 @@ def create_dataframes(results):
     return df, df_stats
 
 
-
 if __name__ == "__main__":
     seed_torch()
     set_pandas_display_options()
 
-    root = "/home/emj6571/dataset_aehren"
-    model_path = "/home/emj6571/model"
+    root = "/home/jacobowsky/Bachelorarbeit_Emanuel_J/dataset_aehren"
+    model_path = "/home/jacobowsky/Bachelorarbeit_Emanuel_J/model"
 
-    mean = torch.Tensor([0.2133, 0.2256, 0.1655])
-    std = torch.Tensor([0.1672, 0.1721, 0.1526])
+    # HSWT-images
+    # mean = torch.Tensor([0.2133, 0.2256, 0.1655])
+    # std = torch.Tensor([0.1672, 0.1721, 0.1526])
+
+    # geokonzept-images
+    mean = torch.Tensor([0.17302011, 0.23450365, 0.19877511])
+    std = torch.Tensor([0.12124911, 0.14004613, 0.12876545])
 
     try:
         dataset_train, dataset_validation, dataset_test, dataset_testing, logger_full, logger_sum, val_losses, augmentet_data = main()
