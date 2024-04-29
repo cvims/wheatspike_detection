@@ -117,7 +117,7 @@ def main():
                                                    step_size=3,
                                                    gamma=0.1)
 
-    num_epochs = 5
+    num_epochs = 1
 
     augmentet_data_counter = 0
     logger_full, logger_sum, val_losses = [], [], []

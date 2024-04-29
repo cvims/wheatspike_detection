@@ -12,9 +12,14 @@ weights/
 gridmaps/
 heatmaps/
 figures/
-draw_on_image.py
-*png
+test/
+test_images/
 
+# files
+mask_rcnn_ma.ipynb
+draw_on_image.py
+annotations_hswt.json
+*png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -60,6 +60,31 @@ def load_current_model(model_path):
         model = torch.load(full_model_path)
         return model
 
+
+# creates mask-rcnn
+def get_model_maskrcnn(num_classes):
+    BOX_DETECTIONS_PER_IMG = 200
+    model = torchvision.models.detection.maskrcnn_resnet50_fpn_v2(weights="DEFAULT", box_detections_per_img=BOX_DETECTIONS_PER_IMG)
+
+    # get number of input features for the classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    # replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+
+    # now get the number of input features for the mask classifier
+    in_features_mask = model.roi_heads.mask_predictor.conv5_mask.in_channels
+    hidden_layer = 256
+    # and replace the mask predictor with a new one
+    model.roi_heads.mask_predictor = MaskRCNNPredictor(in_features_mask,
+                                                       hidden_layer,
+                                                       num_classes)
+    # change normalization (transform layer)
+    grcnn = torchvision.models.detection.transform.GeneralizedRCNNTransform(min_size=800, max_size=1333, image_mean=mean, image_std=std)
+    model.transform = grcnn
+    
+    return model
+
+
 # re-trainings procedure
 def main(root, model_path):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device('cpu')
@@ -70,11 +95,10 @@ def main(root, model_path):
 
     # split dataset in train, validation and test set
     indices = torch.randperm(len(dataset)).tolist()
-    dataset_train = torch.utils.data.Subset(dataset, indices[:35])
-    dataset_validation = torch.utils.data.Subset(dataset_test, indices[35:43])
-    dataset_testing = torch.utils.data.Subset(dataset_test, indices[-7:])
+    dataset_train = torch.utils.data.Subset(dataset, indices[:40])
+    dataset_validation = torch.utils.data.Subset(dataset_test, indices[-10:])
 
-    print(len(dataset_train), len(dataset_validation), len(dataset_testing))
+    print(len(dataset_train), len(dataset_validation))
 
     # define training, validation and test data loaders
     data_loader_train = torch.utils.data.DataLoader(
@@ -85,12 +109,12 @@ def main(root, model_path):
         dataset_validation, batch_size=2, shuffle=False, num_workers=0,
         collate_fn=collate_fn)
 
-    data_loader_test = torch.utils.data.DataLoader(
-        dataset_testing, batch_size=2, shuffle=False, num_workers=0,
-        collate_fn=collate_fn)
+    # data_loader_test = torch.utils.data.DataLoader(
+    #     dataset_testing, batch_size=2, shuffle=False, num_workers=0,
+    #     collate_fn=collate_fn)
 
     # get the model using our helper function
-    model = load_current_model(model_path)
+    model = get_model_maskrcnn(num_classes)
     model.to(device)
 
     # optimizer
@@ -102,7 +126,7 @@ def main(root, model_path):
                                                    step_size=3,
                                                    gamma=0.1)
 
-    num_epochs = 50
+    num_epochs = 20
 
     augmentet_data_counter = 0
     logger_full, logger_sum, val_losses = [], [], []
