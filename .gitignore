@@ -6,14 +6,23 @@ dataset_aehren/
 geokonzept_annotations/
 demonstrator/
 sp_folder/
-images/
 model/
-weights/
 gridmaps/
 heatmaps/
-figures/
 test/
 test_images/
+
+BA/
+BA_python_version/
+
+# paper
+data/
+csv-data/
+figures/
+weights/
+models/
+figures/
+images/
 
 # files
 mask_rcnn_ma.ipynb
