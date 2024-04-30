@@ -1,7 +1,8 @@
 # SOURCE: https://github.com/pytorch/vision/tree/main/references/detection
 
-import math
+import os
 import sys
+import math
 import time
 
 import torch
@@ -10,7 +11,7 @@ from typing import Tuple, List, Dict
 from torchvision.models.detection.roi_heads import fastrcnn_loss
 from torchvision.models.detection.rpn import concat_box_prediction_layers
 
-sys.path.insert(1, '/home/jacobowsky/Bachelorarbeit_Emanuel_J/src/utils')
+sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
 import detection_utils
 
 from coco_eval import CocoEvaluator

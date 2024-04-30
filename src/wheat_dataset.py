@@ -17,7 +17,7 @@ from torchvision.utils import draw_bounding_boxes
 from torchvision.utils import draw_segmentation_masks
 from torch.utils.data import Dataset
 
-sys.path.insert(1, '/home/jacobowsky/Bachelorarbeit_Emanuel_J/src')
+sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
 from utils.utils_dataset import extract_coco_annotations, nostdout, get_transform_albumentation, set_seed
 
 

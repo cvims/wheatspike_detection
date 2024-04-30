@@ -29,7 +29,7 @@ from sklearn.metrics import mean_squared_error
 from tqdm import tqdm
 import cv2
 
-sys.path.insert(1, '/home/jacobowsky/Bachelorarbeit_Emanuel_J/src')
+sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
 from utils.utils_dataset import set_seed
 from full_plot_dataset import FullPlotDataset
 

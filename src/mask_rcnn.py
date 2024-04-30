@@ -16,7 +16,7 @@ from sklearn.metrics import mean_squared_error
 
 import torch
 
-sys.path.insert(1, '/home/jacobowsky/Bachelorarbeit_Emanuel_J/src')
+sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
 from wheat_dataset import WheatDataset
 from utils.detection_utils import collate_fn
 from utils.detection_engine import train_one_epoch, evaluate, evaluate_loss
@@ -36,15 +36,11 @@ def main(root, model_path):
 
     # split dataset in train, validation and test set
     indices = torch.randperm(len(dataset)).tolist()
-    # dataset_train = torch.utils.data.Subset(dataset, indices[:362])
-    # dataset_validation = torch.utils.data.Subset(dataset_test, indices[362:439])
-    # dataset_testing = torch.utils.data.Subset(dataset_test, indices[-77:])
+    dataset_train = torch.utils.data.Subset(dataset, indices[:362])
+    dataset_validation = torch.utils.data.Subset(dataset_test, indices[362:439])
+    dataset_testing = torch.utils.data.Subset(dataset_test, indices[-77:])
 
-    dataset_train = torch.utils.data.Subset(dataset, indices[:10])
-    dataset_validation = torch.utils.data.Subset(dataset_test, indices[10:20])
-    dataset_testing = torch.utils.data.Subset(dataset_test, indices[20:30])
-
-    # define training, validation and test data loaders
+    # define training and validation data loaders
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train, batch_size=4, shuffle=True, num_workers=0,
         collate_fn=collate_fn)
@@ -53,7 +49,7 @@ def main(root, model_path):
         dataset_validation, batch_size=2, shuffle=False, num_workers=0,
         collate_fn=collate_fn)
 
-    # get the model using our helper function
+    # get the model using a helper function
     NUM_CLASSES = 2
     model = get_model_maskrcnn(NUM_CLASSES, BOX_DETECTIONS_PER_IMG=200)
     model.to(device)
