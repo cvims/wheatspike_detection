@@ -20,7 +20,7 @@ sys.path.insert(1, os.path.dirname(os.path.realpath(__file__)))
 from wheat_dataset import WheatDataset
 from utils.detection_utils import collate_fn
 from utils.detection_engine import train_one_epoch, evaluate, evaluate_loss
-from utils.utils_network import set_pandas_display_options, get_model_maskrcnn, prediction
+from utils.utils_network import set_pandas_display_options, get_model_maskrcnn, prediction, get_model_maskrcnn_backbone
 from utils.utils_dataset import get_transform_albumentation, set_seed, get_annotations
 
 
@@ -48,9 +48,14 @@ def main(root, model_path):
     data_loader_validation = torch.utils.data.DataLoader(
         dataset_validation, batch_size=2, shuffle=False, num_workers=0,
         collate_fn=collate_fn)
-
+    
     # get the model using a helper function
     NUM_CLASSES = 2
+    
+    # for further testing different backbones
+    # backbones = ['resnet18', 'resnet34', 'resnet50', 'resnet152', 'resnext50_32x4d']
+    # model = get_model_maskrcnn_backbone(backbones[0], NUM_CLASSES, BOX_DETECTIONS_PER_IMG=200)
+
     model = get_model_maskrcnn(NUM_CLASSES, BOX_DETECTIONS_PER_IMG=200)
     model.to(device)
 

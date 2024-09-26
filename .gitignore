@@ -12,9 +12,6 @@ heatmaps/
 test/
 test_images/
 
-BA/
-BA_python_version/
-
 # paper
 data/
 csv-data/
